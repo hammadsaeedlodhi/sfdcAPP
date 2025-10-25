@@ -5,145 +5,199 @@ import contact
 import opportunity
 import lead
 
-# ------------------ PAGE CONFIG ------------------
+# -------- Page Config --------
 st.set_page_config(
-    page_title="Salesforce Enterprise",
+    page_title="Salesforce Enterprise App",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded"   # 👈 Sidebar always visible
 )
 
-# ------------------ SESSION INIT ------------------
-if "logged_in" not in st.session_state:
+# -------- Initialize session states --------
+if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
-if "userid" not in st.session_state:
+
+if 'userid' not in st.session_state:
     st.session_state.userid = ""
-if "sf_connection" not in st.session_state:
+
+if 'sf_connection' not in st.session_state:
     st.session_state.sf_connection = None
 
-# =====================================================
-# ============== LOGIN SCREEN =========================
-# =====================================================
+# ---------- LOGIN SCREEN ----------
 if not st.session_state.logged_in:
-
-    # --- Login page CSS ---
     st.markdown(
         """
         <style>
         .block-container {
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
-            height: 100vh;                 /* vertically center */
+            height: 100vh;
             max-width: 600px;
             margin: auto;
-            text-align: center;
-            padding-top: 40px;             /* fix logo clipping */
-        }
-        h1 {
-            text-align: center;
         }
         </style>
         """,
         unsafe_allow_html=True
     )
 
-    # --- Salesforce logo and title ---
-    st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
-    st.image(
-        "https://upload.wikimedia.org/wikipedia/commons/f/f9/Salesforce.com_logo.svg",
-        width=100,
+    # Inline Salesforce logo in title
+    st.markdown(
+        "### <img src='https://upload.wikimedia.org/wikipedia/commons/f/f9/Salesforce.com_logo.svg' "
+        "width='25' style='vertical-align:middle;'> Salesforce Enterprise Login",
+        unsafe_allow_html=True
     )
-
-    st.title("Salesforce Enterprise Login")
     st.write("Enter your Salesforce credentials to continue:")
 
-    # --- Login form ---
     userid = st.text_input("User ID:")
     password = st.text_input("Password:", type="password")
     securitytoken = st.text_input("Security Token:", type="password")
-    loginbutton = st.button("Login", use_container_width=True)
+
+    # Smaller, centered login button
+    st.markdown("<div style='text-align:center;'>", unsafe_allow_html=True)
+    loginbutton = st.button("Login")
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if loginbutton:
         if not userid or not password or not securitytoken:
-            st.error("⚠️ All fields are mandatory")
+            st.error("⚠️ All fields are required.")
         else:
-            with st.spinner("Verifying credentials..."):
-                try:
-                    sf = Salesforce(
-                        username=userid, password=password, security_token=securitytoken
-                    )
-                    st.session_state.sf_connection = sf
-                    st.session_state.logged_in = True
-                    st.session_state.userid = userid
-                    st.success("✅ Login successful!")
-                    st.rerun()
-                except SalesforceAuthenticationFailed:
-                    st.error("❌ Invalid Login Credentials")
+            st.success("🔄 Verifying your credentials, please wait...")  # green success message
+            try:
+                sf = Salesforce(username=userid, password=password, security_token=securitytoken)
+                st.session_state.sf_connection = sf
+                st.session_state.logged_in = True
+                st.session_state.userid = userid
+                st.success("✅ Login successful!")
+                st.rerun()
+            except SalesforceAuthenticationFailed:
+                st.error("❌ Invalid Salesforce credentials. Please try again.")
 
-# =====================================================
-# ============== MAIN APP SCREEN ======================
-# =====================================================
+# ---------- MAIN APP ----------
 else:
-    # --- Sidebar configuration ---
-    st.sidebar.image(
-        "https://upload.wikimedia.org/wikipedia/commons/f/f9/Salesforce.com_logo.svg",
-        width=250,
-    )
-    st.sidebar.markdown("### 🌐 Salesforce Data Manager")
-    st.sidebar.info(
-        "Manage your Salesforce objects seamlessly: "
-        "Accounts, Contacts, Opportunities, and Leads — all from one unified interface."
-    )
-    st.sidebar.markdown("---")
-    st.sidebar.write(f"👤 **Logged in as:** {st.session_state.userid}")
-
-    if st.sidebar.button("🚪 Logout"):
-        st.session_state.logged_in = False
-        st.session_state.sf_connection = None
-        st.session_state.userid = ""
-        st.success("You have been logged out successfully.")
-        st.rerun()
-
-    # --- Main UI layout ---
+    # ---------------- SIDEBAR ----------------
     st.markdown(
         """
         <style>
-        .block-container {
-            max-width: 100% !important;
-            padding-left: 2rem;
-            padding-right: 2rem;
-            padding-top: 3rem;
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #01437a, #0a3b6a);
+            }
+        [data-testid="stSidebar"] * {
+            color: white !important;
         }
         </style>
         """,
         unsafe_allow_html=True
     )
 
-    st.write(
-        f"### Welcome, {st.session_state.userid}! Select the Salesforce object you want to manage:"
+    with st.sidebar:
+        st.image(
+            "https://upload.wikimedia.org/wikipedia/commons/f/f9/Salesforce.com_logo.svg",
+            width=180
+        )
+        st.markdown("### 👋 Welcome!")
+        st.markdown(f"**{st.session_state.userid}**")
+        st.caption("Connected to your Salesforce Org")
+
+        st.markdown("---")
+        st.markdown("#### 📊 Manage Records")
+        st.markdown(
+            """
+            - 🏢 **Accounts**  
+            - 👥 **Contacts**  
+            - 💼 **Opportunities**  
+            - 👤 **Leads**
+            """
+        )
+        st.caption("💡 Tip: Use the main panel to search, add, or update Salesforce records.")
+
+        if st.sidebar.button("🚪 Logout"):
+            st.session_state.logged_in = False
+            st.session_state.sf_connection = None
+            st.session_state.userid = ""
+            st.success("You have been logged out successfully.")
+            st.rerun()
+
+ # ---------------- REMOVE TOP PADDING ----------------
+    st.markdown(
+        """
+        <style>
+        /* Remove top padding/margin of main container */
+        .block-container {
+            padding-top: 0rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    # ---------------- MAIN CONTENT ----------------
+    st.title("Salesforce Enterprise Data Manager")
+    st.write(f"Logged in as: **{st.session_state.userid}**")
+
+   # st.divider()
+
+    # ---------- COMPACT SELECTBOX STYLING ----------
+    st.markdown(
+        """
+        <style>
+        /* Reduce selectbox option spacing */
+        div[data-baseweb="select"] > div > div {
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+        }
+
+        /* Reduce overall selectbox height */
+        div[data-baseweb="select"] > div {
+            height: 35px;  /* adjust as needed */
+        }
+
+        /* Optional: smaller font for options */
+        div[data-baseweb="select"] span {
+            font-size: 14px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Limit selectbox width to ~25 characters
+    st.markdown(
+        """
+        <style>
+        div[data-baseweb="select"] > div {
+            max-width: 400px;  /* adjust width as needed */
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
     )
 
     choice = st.selectbox(
-        "Select your option to work:",
+        "Select Salesforce Object:",
         ["--Select Option--", "Account", "Contact", "Opportunity", "Lead"],
-        key="object_select",
         index=0,
+        key="object_choice"
     )
 
-    st.write("---")
+    #st.divider()
 
-    # --- Route to selected object ---
-    try:
-        if choice == "Account":
+    # ---------- OBJECT MODULES ----------
+    if choice == "Account":
+        try:
             account.run()
-        elif choice == "Contact":
+        except Exception as e:
+            st.error(f"❌ Failed to open Account module: {e}")
+    elif choice == "Contact":
+        try:
             contact.run()
-        elif choice == "Opportunity":
+        except Exception as e:
+            st.error(f"❌ Failed to open Contact module: {e}")
+    elif choice == "Opportunity":
+        try:
             opportunity.run()
-        elif choice == "Lead":
+        except Exception as e:
+            st.error(f"❌ Failed to open Opportunity module: {e}")
+    elif choice == "Lead":
+        try:
             lead.run()
-        elif choice == "--Select Option--":
-            st.info("Please select an object from the dropdown above.")
-    except Exception as e:
-        st.error(f"❌ Error loading {choice} module: {e}")
+        except Exception as e:
+            st.error(f"❌ Failed to open Lead module: {e}")
