@@ -5,7 +5,7 @@ import time
 # ------------------- ACCOUNT APP -------------------
 def run():
     st.markdown(
-        "<h2 style='text-align:center;'>🏦 Salesforce Data Entry Form for Account Object</h2>",
+        "<h3 style='color: orange;'>🏦 Salesforce Account Management</h3>",
         unsafe_allow_html=True
     )
     st.write("You can search, add, edit, or delete Account records.")
@@ -95,14 +95,14 @@ def run():
 
         col_outer, _ = st.columns([2, 1])
         with col_outer:
-            col1, col2, col3, col4, col5 = st.columns([1.5, 1.5, 1.5, 1.5, 2])
+            col1, col2, col3, col4 = st.columns([12, 12, 12, 12])
 
             # ---------------- COLUMN 1 ----------------
             with col1:
                 name = st.text_input("Name", value=account.get("name", ""), key=f"name_{prefix}")
                 phone = st.text_input("Phone", value=account.get("phone", ""), key=f"phone_{prefix}")
                 parent_id = st.text_input("Parent Account Id", value=account.get("parent_id", ""), key=f"parent_id_{prefix}")
-                account_type_options = [""] + [
+                account_type_options = [""] + ["--select--",
                     "Business Partners", "Technology Partners", "Direct Customers", "Support Team", "Prospect",
                     "Customer - Direct", "Customer - Channel", "Channel Partner / Reseller",
                     "Installation Partner", "Technology Partner"
@@ -112,10 +112,10 @@ def run():
 
             # ---------------- COLUMN 2 ----------------
             with col2:
-                rating_options = [""] + ["Hot", "Warm", "Cold"]
+                rating_options = [""] + ["--select--","Hot", "Warm", "Cold"]
                 rating_index = rating_options.index(account.get("rating", "")) if account.get("rating", "") in rating_options else 0
                 rating = st.selectbox("Rating", rating_options, index=rating_index, key=f"rating_{prefix}")
-                industry_options = [""] + [
+                industry_options = [""] + ["--select--",
                     "Apparel", "Banking", "Biotechnology", "Chemicals", "Communications", "Construction",
                     "Consulting", "Education", "Electronics", "Energy", "Engineering", "Entertainment",
                     "Environmental", "Finance", "Food & Beverage", "Government", "Healthcare", "Hospitality",
@@ -167,8 +167,25 @@ def run():
 
     # ------------------- TAB 1: SEARCH & EDIT -------------------
     with tab1:
-        st.markdown("<h3 class='small-header'>🔍 Search Accounts by Name</h3>", unsafe_allow_html=True)
-        search_name = st.text_input("Enter Name to search for editing", label_visibility="collapsed")
+        st.markdown("<h5 style='color: orange;'>🔍 Search Accounts by Name</h5>", unsafe_allow_html=True)
+
+        # --- CSS to limit search input width ---
+        st.markdown(
+            """
+            <style>
+            div[data-baseweb="input"] > div {
+                max-width: 480px !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        search_name = st.text_input(
+            "Enter Name to search for editing",
+            label_visibility="collapsed",
+            key="search_name_input"
+        )
 
         if search_name:
             results = search_accounts(search_name)
@@ -188,11 +205,16 @@ def run():
                 st.dataframe(df, use_container_width=True)
 
                 options = [f"{r['Name']} | {r.get('Phone','')} | {r.get('Industry','')}" for r in results]
-                selected_idx = st.selectbox("Select record to edit", range(len(results)), format_func=lambda x: options[x])
-                record_to_edit = normalize_keys(results[selected_idx])
+                
+                # Orange label for select box
+            st.markdown("<div style='color: orange; font-size: 18px; font-weight: 600; margin-bottom: -12px;'>Select record to edit</div>",
+            unsafe_allow_html=True)
+            selected_idx = st.selectbox("", range(len(results)), format_func=lambda x: options[x])
 
-                st.write("Edit the selected record:")
-                with st.form(f"edit_form_{record_to_edit['id']}"):
+            record_to_edit = normalize_keys(results[selected_idx])
+
+            st.write("Edit the selected record:")
+            with st.form(f"edit_form_{record_to_edit['id']}"):
                     updated_data = build_account_fields_left_aligned(prefix=f"edit_{record_to_edit['id']}", account=record_to_edit)
                     updated_data["id"] = record_to_edit["id"]
 
@@ -225,7 +247,7 @@ def run():
 
     # ------------------- TAB 2: CREATE NEW -------------------
     with tab2:
-        st.markdown("<h3 class='small-header'>➕ Add New Account</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: orange;'>➕ Add New Account</h3>", unsafe_allow_html=True)
         with st.form("new_form", clear_on_submit=True):
             new_account = build_account_fields_left_aligned(prefix="new")
             submitted_new = st.form_submit_button("Save New Record")

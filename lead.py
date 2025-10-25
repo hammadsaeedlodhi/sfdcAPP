@@ -5,7 +5,7 @@ import time
 # ------------------- LEAD APP -------------------
 def run():
     st.markdown(
-        "<h2 style='text-align:center;'>👤 Salesforce Lead Manager</h2>",
+        "<h2 style='text-align:left; color:#FFA500;'>👤 Salesforce Lead Manager</h2>",
         unsafe_allow_html=True
     )
     st.write("Use this app to search, add, edit, or delete Lead records in Salesforce.")
@@ -173,7 +173,7 @@ def run():
 
     # ------------------- TAB 1: SEARCH / EDIT -------------------
     with tab1:
-        st.markdown("<h4>Search Leads</h4>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color:#FFA500;'>Search Leads</h4>", unsafe_allow_html=True)
         search_name = st.text_input("Enter Last Name or Company", placeholder="e.g. Johnson or ACME")
 
         if search_name:
@@ -191,36 +191,42 @@ def run():
                     updated_data = build_lead_fields(prefix=f"edit_{record_to_edit['id']}", lead=record_to_edit)
                     updated_data["id"] = record_to_edit["id"]
 
-                    col1, col2 = st.columns(2)
+                    col1, col2, col3 = st.columns([1, 1, 1.2])
+
                     with col1:
-                        submitted_update = st.form_submit_button("💾 Update Record", use_container_width=True)
-                        if submitted_update:
-                            success, err = upsert_lead(**updated_data)
+                        submitted_update = st.form_submit_button("💾 Update", use_container_width=True)
+
+                    with col2:
+                        delete_clicked = st.form_submit_button("🗑️ Delete", use_container_width=True)
+
+                    with col3:
+                        confirm_delete = st.checkbox("Confirm delete", key=f"confirm_delete_{record_to_edit['id']}")
+
+                    # Handle actions
+                    if submitted_update:
+                        success, err = upsert_lead(**updated_data)
+                        if success:
+                            st.success("✅ Record updated successfully!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Update failed: {err}")
+
+                    if delete_clicked:
+                        if confirm_delete:
+                            success, err = delete_lead(record_to_edit["id"])
                             if success:
-                                st.success("✅ Record updated successfully!")
+                                st.warning("⚠️ Record deleted successfully!")
                                 time.sleep(1)
                                 st.rerun()
                             else:
-                                st.error(f"❌ Update failed: {err}")
-
-                    with col2:
-                        confirm_delete = st.checkbox("Confirm delete", key=f"confirm_delete_{record_to_edit['id']}")
-                        delete_clicked = st.form_submit_button("🗑️ Delete Record", use_container_width=True)
-                        if delete_clicked:
-                            if confirm_delete:
-                                success, err = delete_lead(record_to_edit["id"])
-                                if success:
-                                    st.warning("⚠️ Record deleted successfully!")
-                                    time.sleep(1)
-                                    st.rerun()
-                                else:
-                                    st.error(f"❌ Delete failed: {err}")
-                            else:
-                                st.warning("⚠️ Please confirm delete before proceeding.")
+                                st.error(f"❌ Delete failed: {err}")
+                        else:
+                            st.warning("⚠️ Please confirm delete before proceeding.")
 
     # ------------------- TAB 2: ADD NEW LEAD -------------------
     with tab2:
-        st.markdown("<h4>Add New Lead</h4>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color:#FFA500;'>Add New Lead</h4>", unsafe_allow_html=True)
         with st.form("new_lead_form", clear_on_submit=True):
             new_lead = build_lead_fields(prefix="new")
             submitted_new = st.form_submit_button("💾 Save New Lead", use_container_width=True)

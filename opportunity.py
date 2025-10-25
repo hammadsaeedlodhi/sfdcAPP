@@ -4,8 +4,9 @@ import time
 
 # ------------------- OPPORTUNITY APP -------------------
 def run():
+    # Header (Left aligned, orange icon)
     st.markdown(
-        "<h2 style='text-align:center;'>💼 Salesforce Opportunity Manager</h2>",
+        "<h2 style='text-align:left; color:#FF8800;'>💼 Salesforce Opportunity Manager</h2>",
         unsafe_allow_html=True
     )
     st.write("Use this app to search, add, edit, or delete Opportunity records in Salesforce.")
@@ -156,7 +157,7 @@ def run():
 
     # ------------------- TAB 1: SEARCH / EDIT -------------------
     with tab1:
-        st.markdown("<h4>Search Opportunities</h4>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color:#FF8800;'>Search Opportunities</h4>", unsafe_allow_html=True)
         search_name = st.text_input("Enter Name to search", placeholder="e.g. ACME Deal")
 
         if search_name:
@@ -167,17 +168,18 @@ def run():
                 st.dataframe(df, use_container_width=True)
 
                 options = [f"{r['Name']} | {r.get('StageName','')} | {r.get('Amount','')}" for r in results]
-                selected_idx = st.selectbox("Select record to edit", range(len(results)), format_func=lambda x: options[x])
+                st.markdown("<h5 style='color:#FF8800; margin-bottom:-10px;'>Select record to edit</h5>", unsafe_allow_html=True)
+                selected_idx = st.selectbox("", range(len(results)), format_func=lambda x: options[x])
                 record_to_edit = normalize_keys(results[selected_idx])
 
                 accounts = sf.query("SELECT Id, Name FROM Account LIMIT 200")['records']
-                with st.form(f"edit_form_{record_to_edit['id']}"):
+                with st.form(f"edit_form_{record_to_edit['id']}", clear_on_submit=False):
                     updated_data = build_opportunity_fields(prefix=f"edit_{record_to_edit['id']}", opp=record_to_edit, accounts=accounts)
                     updated_data["id"] = record_to_edit["id"]
 
-                    col1, col2 = st.columns(2)
+                    col1, col2 = st.columns([1, 1])
                     with col1:
-                        submitted_update = st.form_submit_button("💾 Update Record", use_container_width=True)
+                        submitted_update = st.form_submit_button("💾 Update Record")
                         if submitted_update:
                             success, err = upsert_opportunity(**updated_data)
                             if success:
@@ -189,7 +191,7 @@ def run():
 
                     with col2:
                         confirm_delete = st.checkbox("Confirm delete", key=f"confirm_delete_{record_to_edit['id']}")
-                        delete_clicked = st.form_submit_button("🗑️ Delete Record", use_container_width=True)
+                        delete_clicked = st.form_submit_button("🗑️ Delete Record")
                         if delete_clicked:
                             if confirm_delete:
                                 success, err = delete_opportunity(record_to_edit["id"])
@@ -204,12 +206,12 @@ def run():
 
     # ------------------- TAB 2: ADD NEW -------------------
     with tab2:
-        st.markdown("<h4>Add New Opportunity</h4>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color:#FF8800;'>Add New Opportunity</h4>", unsafe_allow_html=True)
         accounts = sf.query("SELECT Id, Name FROM Account LIMIT 200")['records']
 
         with st.form("new_opp_form", clear_on_submit=True):
             new_opp = build_opportunity_fields(prefix="new", accounts=accounts)
-            submitted_new = st.form_submit_button("💾 Save New Opportunity", use_container_width=True)
+            submitted_new = st.form_submit_button("💾 Save New Opportunity")
 
             if submitted_new:
                 if new_opp["name"] and new_opp["account_id"]:
