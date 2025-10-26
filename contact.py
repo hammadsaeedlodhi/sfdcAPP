@@ -2,13 +2,14 @@ import streamlit as st
 import pandas as pd
 import time
 
+
 def run():
-    # --- HEADER (left aligned and orange like account.py) ---
+    # --- HEADER ---
     st.markdown(
         "<h3 style='color: orange;'>👤 Salesforce Contact Management</h3>",
         unsafe_allow_html=True
     )
-    st.write("You can search, add, edit, or delete Contact records.")
+    st.write("You can search, add, edit, delete, or bulk upload Contact records (duplicates skipped automatically).")
 
     sf = st.session_state.sf_connection
 
@@ -17,12 +18,28 @@ def run():
         try:
             q = f"SELECT Id, Name FROM Account ORDER BY Name LIMIT {limit}"
             res = sf.query(q)['records']
-            accounts = [(r.get('Id'), r.get('Name')) for r in res]
-            return accounts
+            return [(r.get('Id'), r.get('Name')) for r in res]
         except Exception:
             return []
 
-    # --- Salesforce CRUD Operations ---
+    # --- Helper: Get existing contact keys (for duplicate check) ---
+    def get_existing_contacts_keys():
+        try:
+            q = "SELECT FirstName, LastName, Email FROM Contact"
+            res = sf.query_all(q)['records']
+            keys = set()
+            for r in res:
+                fname = (r.get("FirstName") or "").strip().lower()
+                lname = (r.get("LastName") or "").strip().lower()
+                email = (r.get("Email") or "").strip().lower()
+                key = f"{fname}|{lname}|{email}"
+                keys.add(key)
+            return keys
+        except Exception as e:
+            st.error(f"⚠️ Could not fetch existing Contacts: {e}")
+            return set()
+
+    # --- Salesforce CRUD ---
     def search_contacts(name_search):
         try:
             query = f"""
@@ -40,7 +57,7 @@ def run():
 
     def upsert_contact(id=None, first_name="", last_name="", phone="", email="", title="", department="", country="", lead_source="", account_id=None):
         try:
-            contact_data = {
+            data = {
                 "FirstName": first_name,
                 "LastName": last_name,
                 "Phone": phone,
@@ -51,12 +68,12 @@ def run():
                 "LeadSource": lead_source,
             }
             if account_id:
-                contact_data["AccountId"] = account_id
+                data["AccountId"] = account_id
 
             if id:
-                sf.Contact.update(id, contact_data)
+                sf.Contact.update(id, data)
             else:
-                sf.Contact.create(contact_data)
+                sf.Contact.create(data)
             return True, None
         except Exception as e:
             return False, str(e)
@@ -84,7 +101,7 @@ def run():
             "account_name": account_obj.get("Name", "") if isinstance(account_obj, dict) else ""
         }
 
-    # --- CONTACT FORM BUILDER (same as account.py style) ---
+    # --- FORM BUILDER ---
     def build_contact_fields_left_aligned(prefix="new", contact=None, accounts_lookup=None):
         if contact is None:
             contact = {}
@@ -112,15 +129,14 @@ def run():
             lead_source_index = LeadSource.index(contact.get("lead_source", "")) if contact.get("lead_source", "") in LeadSource else 0
             lead_source = st.selectbox("Lead Source", LeadSource, index=lead_source_index, key=f"lead_{prefix}")
 
-            # Account lookup
             current_account_id = contact.get("account_id") or ""
             idx = 0
             for i, (aid, _) in enumerate(account_options):
                 if aid == current_account_id:
                     idx = i
                     break
-            selected_account_display = st.selectbox("Account (Parent)", account_display, index=idx, key=f"account_{prefix}")
-            selected_account_id = account_options[account_display.index(selected_account_display)][0] if selected_account_display in account_display else ""
+            selected_display = st.selectbox("Account (Parent)", account_display, index=idx, key=f"account_{prefix}")
+            selected_account_id = account_options[account_display.index(selected_display)][0] if selected_display in account_display else ""
 
         return {
             "first_name": first_name,
@@ -134,9 +150,9 @@ def run():
             "account_id": selected_account_id
         }
 
-    # --- LAYOUT ---
+    # --- TABS ---
     accounts_lookup = load_accounts_for_lookup()
-    tab1, tab2 = st.tabs(["🔍 Search & Edit Contacts", "➕ Create New Contact"])
+    tab1, tab2, tab3 = st.tabs(["🔍 Search & Edit Contacts", "➕ Create New Contact", "📤 Bulk Upload Contacts"])
 
     # --- TAB 1: SEARCH & EDIT ---
     with tab1:
@@ -147,17 +163,11 @@ def run():
             results = search_contacts(search_name)
             if results:
                 st.success(f"✅ Found {len(results)} record(s)")
-                processed = []
-                for r in results:
-                    pr = r.copy()
-                    acct = pr.get("Account") or {}
-                    pr["AccountName"] = acct.get("Name", "") if isinstance(acct, dict) else ""
-                    processed.append(pr)
-                df = pd.DataFrame(processed).drop(columns=["attributes"], errors='ignore')
+                df = pd.DataFrame(results).drop(columns=["attributes"], errors="ignore")
                 st.dataframe(df, use_container_width=True)
 
                 options = [
-                    f"{(r.get('FirstName') or '')} {(r.get('LastName') or '')} | {r.get('Email','')} | {r.get('Phone','')} | {(r.get('Account') or {}).get('Name','')}"
+                    f"{r.get('FirstName','')} {r.get('LastName','')} | {r.get('Email','')} | {r.get('Phone','')}"
                     for r in results
                 ]
                 selected_idx = st.selectbox(
@@ -178,51 +188,121 @@ def run():
 
                     col_btn1, col_btn2, _ = st.columns([1, 1, 3])
                     with col_btn1:
-                        submitted_update = st.form_submit_button("💾 Update Record", use_container_width=True)
+                        update_click = st.form_submit_button("💾 Update", use_container_width=True)
                     with col_btn2:
-                        delete_clicked = st.form_submit_button("🗑️ Delete Record", use_container_width=True)
+                        delete_click = st.form_submit_button("🗑️ Delete", use_container_width=True)
 
-                    confirm_delete = st.checkbox("Confirm delete", key=f"confirm_delete_{record_to_edit['id']}")
+                    confirm_delete = st.checkbox("Confirm delete", key=f"confirm_del_{record_to_edit['id']}")
 
-                    if submitted_update:
-                        success, err = upsert_contact(**updated_data)
-                        if success:
-                            st.success("✅ Record updated successfully!")
+                    if update_click:
+                        ok, err = upsert_contact(**updated_data)
+                        if ok:
+                            st.success("✅ Contact updated successfully!")
                             time.sleep(1)
                             st.rerun()
                         else:
                             st.error(f"❌ Update failed: {err}")
 
-                    if delete_clicked:
+                    if delete_click:
                         if confirm_delete:
-                            success, err = delete_contact(record_to_edit["id"])
-                            if success:
-                                st.warning("⚠️ Record deleted successfully!")
+                            ok, err = delete_contact(record_to_edit["id"])
+                            if ok:
+                                st.warning("⚠️ Contact deleted successfully!")
                                 time.sleep(1)
                                 st.rerun()
                             else:
                                 st.error(f"❌ Delete failed: {err}")
                         else:
-                            st.warning("⚠️ Please check 'Confirm delete' before deleting the record.")
+                            st.warning("⚠️ Please confirm before deleting.")
 
     # --- TAB 2: CREATE NEW ---
     with tab2:
         st.markdown("<h4 style='color: orange;'>➕ Add New Contact</h4>", unsafe_allow_html=True)
         with st.form("new_contact_form", clear_on_submit=True):
-            new_contact = build_contact_fields_left_aligned(prefix="new", contact=None, accounts_lookup=accounts_lookup)
-
-            col_save, _ = st.columns([1, 3])
-            with col_save:
-                submitted_new = st.form_submit_button("Save New Contact", use_container_width=True)
+            new_contact = build_contact_fields_left_aligned(prefix="new", accounts_lookup=accounts_lookup)
+            submitted_new = st.form_submit_button("Save New Contact", use_container_width=True)
 
             if submitted_new:
                 if new_contact["last_name"]:
-                    success, err = upsert_contact(id=None, **new_contact)
-                    if success:
+                    ok, err = upsert_contact(**new_contact)
+                    if ok:
                         st.success("✅ Contact added successfully!")
                         time.sleep(1)
                         st.rerun()
                     else:
                         st.error(f"❌ Failed to add contact: {err}")
                 else:
-                    st.warning("⚠️ Please enter at least Last Name before saving.")
+                    st.warning("⚠️ Please enter Last Name before saving.")
+
+    # --- TAB 3: BULK UPLOAD ---
+    with tab3:
+        st.markdown("<h4 style='color: orange;'>📤 Bulk Upload Contacts (Avoid Duplicates)</h4>", unsafe_allow_html=True)
+        st.info("Upload Excel/CSV. Existing contacts (First+Last+Email) will be skipped automatically.")
+
+        file = st.file_uploader("Upload Excel or CSV", type=["xlsx", "csv"])
+
+        if file:
+            try:
+                df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file)
+                st.write("✅ File Uploaded Successfully. Preview below:")
+                st.dataframe(df.head(), use_container_width=True)
+
+                df.columns = df.columns.str.strip()
+                needed = ["FirstName", "LastName", "Email"]
+                missing = [x for x in needed if x not in df.columns]
+                if missing:
+                    st.warning(f"⚠️ Missing required columns: {', '.join(missing)}")
+                else:
+                    st.success(f"✅ {len(df)} records ready. Checking for duplicates...")
+
+                    with st.spinner("Fetching existing contacts..."):
+                        existing_keys = get_existing_contacts_keys()
+
+                    df["__key__"] = df.apply(
+                        lambda r: f"{str(r.get('FirstName','')).strip().lower()}|{str(r.get('LastName','')).strip().lower()}|{str(r.get('Email','')).strip().lower()}",
+                        axis=1
+                    )
+                    df_unique = df[~df["__key__"].isin(existing_keys)].drop(columns="__key__")
+
+                    skipped = len(df) - len(df_unique)
+                    st.info(f"🧾 {skipped} duplicates skipped, {len(df_unique)} new to insert.")
+
+                    if len(df_unique) > 0:
+                        if st.button("🚀 Insert New Contacts"):
+                            with st.spinner("Rechecking duplicates before inserting..."):
+                                latest = get_existing_contacts_keys()
+                                df_unique["__key__"] = df_unique.apply(
+                                    lambda r: f"{str(r.get('FirstName','')).strip().lower()}|{str(r.get('LastName','')).strip().lower()}|{str(r.get('Email','')).strip().lower()}",
+                                    axis=1
+                                )
+                                df_final = df_unique[~df_unique["__key__"].isin(latest)].drop(columns="__key__")
+
+                            if df_final.empty:
+                                st.warning("⚠️ All records already exist — nothing to insert.")
+                            else:
+                                try:
+                                    records = df_final.to_dict(orient="records")
+                                    batch_size = 200
+                                    success_count = 0
+                                    fail_count = 0
+
+                                    for i in range(0, len(records), batch_size):
+                                        batch = records[i:i + batch_size]
+                                        try:
+                                            results = sf.bulk.Contact.insert(batch)
+                                            for r in results:
+                                                if r.get("success"):
+                                                    success_count += 1
+                                                else:
+                                                    fail_count += 1
+                                        except Exception as e:
+                                            st.error(f"Error inserting batch: {e}")
+                                            fail_count += len(batch)
+
+                                    st.success(f"✅ Upload complete! {success_count} inserted, {fail_count} failed.")
+                                except Exception as e:
+                                    st.error(f"❌ Bulk insert failed: {e}")
+                    else:
+                        st.warning("⚠️ No new records to insert — all were duplicates.")
+            except Exception as e:
+                st.error(f"❌ Error reading file: {e}")

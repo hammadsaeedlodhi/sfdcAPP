@@ -8,11 +8,24 @@ def run():
         "<h3 style='color: orange;'>🏦 Salesforce Account Management</h3>",
         unsafe_allow_html=True
     )
-    st.write("You can search, add, edit, or delete Account records.")
+    st.write("You can search, add, edit, delete, or bulk upload Account records.")
 
     sf = st.session_state.sf_connection
 
-    # --- Salesforce CRUD Operations ---
+    # ------------------- HELPER FUNCTIONS -------------------
+    def get_existing_account_names():
+        """Fetch all existing account names (lowercased) from Salesforce"""
+        try:
+            names = []
+            query = "SELECT Name FROM Account"
+            res = sf.query_all(query)
+            records = res.get("records", [])
+            names = [r["Name"].strip().lower() for r in records if r.get("Name")]
+            return set(names)
+        except Exception as e:
+            st.error(f"❌ Failed to fetch existing names: {e}")
+            return set()
+
     def search_accounts(name_search):
         try:
             query = f"""
@@ -97,25 +110,23 @@ def run():
         with col_outer:
             col1, col2, col3, col4 = st.columns([12, 12, 12, 12])
 
-            # ---------------- COLUMN 1 ----------------
             with col1:
                 name = st.text_input("Name", value=account.get("name", ""), key=f"name_{prefix}")
                 phone = st.text_input("Phone", value=account.get("phone", ""), key=f"phone_{prefix}")
                 parent_id = st.text_input("Parent Account Id", value=account.get("parent_id", ""), key=f"parent_id_{prefix}")
-                account_type_options = [""] + ["--select--",
+                account_type_options = [""] + [
                     "Business Partners", "Technology Partners", "Direct Customers", "Support Team", "Prospect",
                     "Customer - Direct", "Customer - Channel", "Channel Partner / Reseller",
                     "Installation Partner", "Technology Partner"
                 ]
-                account_type_index = account_type_options.index(account.get("account_type", "")) if account.get("account_type") in account_type_options else 0
+                account_type_index = account_type_options.index(account.get("account_type", "")) if account.get("account_type", "") in account_type_options else 0
                 account_type = st.selectbox("Account Type", account_type_options, index=account_type_index, key=f"account_type_{prefix}")
 
-            # ---------------- COLUMN 2 ----------------
             with col2:
-                rating_options = [""] + ["--select--","Hot", "Warm", "Cold"]
+                rating_options = [""] + ["Hot", "Warm", "Cold"]
                 rating_index = rating_options.index(account.get("rating", "")) if account.get("rating", "") in rating_options else 0
                 rating = st.selectbox("Rating", rating_options, index=rating_index, key=f"rating_{prefix}")
-                industry_options = [""] + ["--select--",
+                industry_options = [""] + [
                     "Apparel", "Banking", "Biotechnology", "Chemicals", "Communications", "Construction",
                     "Consulting", "Education", "Electronics", "Energy", "Engineering", "Entertainment",
                     "Environmental", "Finance", "Food & Beverage", "Government", "Healthcare", "Hospitality",
@@ -125,18 +136,16 @@ def run():
                 industry_index = industry_options.index(account.get("industry", "")) if account.get("industry", "") in industry_options else 0
                 industry = st.selectbox("Industry", industry_options, index=industry_index, key=f"industry_{prefix}")
                 country = st.text_input("Country", value=account.get("country", ""), key=f"country_{prefix}")
-                active_options = [""] + ["Yes", "No"]
+                active_options = ["", "Yes", "No"]
                 active_index = active_options.index(account.get("active", "")) if account.get("active", "") in active_options else 0
                 active = st.selectbox("Active", active_options, index=active_index, key=f"active_{prefix}")
 
-            # ---------------- COLUMN 3 ----------------
             with col3:
                 billing_street = st.text_input("Billing Street", value=account.get("billing_street", ""), key=f"billing_street_{prefix}")
                 billing_city = st.text_input("Billing City", value=account.get("billing_city", ""), key=f"billing_city_{prefix}")
                 billing_state = st.text_input("Billing State", value=account.get("billing_state", ""), key=f"billing_state_{prefix}")
                 billing_postal = st.text_input("Billing Postal Code", value=account.get("billing_postal", ""), key=f"billing_postal_{prefix}")
 
-            # ---------------- COLUMN 4 ----------------
             with col4:
                 shipping_street = st.text_input("Shipping Street", value=account.get("shipping_street", ""), key=f"shipping_street_{prefix}")
                 shipping_city = st.text_input("Shipping City", value=account.get("shipping_city", ""), key=f"shipping_city_{prefix}")
@@ -163,65 +172,29 @@ def run():
         }
 
     # ------------------- TAB LAYOUT -------------------
-    tab1, tab2 = st.tabs(["🔍 Search & Edit Accounts", "➕ Create New Account"])
+    tab1, tab2, tab3 = st.tabs(["🔍 Search & Edit", "➕ Create New", "📤 Bulk Upload"])
 
-    # ------------------- TAB 1: SEARCH & EDIT -------------------
+    # ------------------- TAB 1 -------------------
     with tab1:
         st.markdown("<h5 style='color: orange;'>🔍 Search Accounts by Name</h5>", unsafe_allow_html=True)
 
-        # --- CSS to limit search input width ---
-        st.markdown(
-            """
-            <style>
-            div[data-baseweb="input"] > div {
-                max-width: 480px !important;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-
-        search_name = st.text_input(
-            "Enter Name to search for editing",
-            label_visibility="collapsed",
-            key="search_name_input"
-        )
-
+        search_name = st.text_input("Enter Name to search for editing", label_visibility="collapsed", key="search_name_input")
         if search_name:
             results = search_accounts(search_name)
             if results:
                 st.success(f"✅ Found {len(results)} record(s)")
-
-                display_results = []
-                for r in results:
-                    rec = r.copy()
-                    rec.pop("attributes", None)
-                    rec["Record Name"] = r.get("Name")
-                    display_results.append(rec)
-
-                df = pd.DataFrame(display_results)
-                if "Id" in df.columns:
-                    df = df.drop(columns=["Id"])
-                st.dataframe(df, use_container_width=True)
-
                 options = [f"{r['Name']} | {r.get('Phone','')} | {r.get('Industry','')}" for r in results]
-                
-                # Orange label for select box
-            st.markdown("<div style='color: orange; font-size: 18px; font-weight: 600; margin-bottom: -12px;'>Select record to edit</div>",
-            unsafe_allow_html=True)
-            selected_idx = st.selectbox("", range(len(results)), format_func=lambda x: options[x])
+                st.markdown("<div style='color: orange; font-size: 18px; font-weight: 600; margin-bottom: -12px;'>Select record to edit</div>", unsafe_allow_html=True)
+                selected_idx = st.selectbox("", range(len(results)), format_func=lambda x: options[x])
+                record_to_edit = normalize_keys(results[selected_idx])
 
-            record_to_edit = normalize_keys(results[selected_idx])
-
-            st.write("Edit the selected record:")
-            with st.form(f"edit_form_{record_to_edit['id']}"):
+                with st.form(f"edit_form_{record_to_edit['id']}"):
                     updated_data = build_account_fields_left_aligned(prefix=f"edit_{record_to_edit['id']}", account=record_to_edit)
                     updated_data["id"] = record_to_edit["id"]
 
                     col1, _ = st.columns([1, 3])
                     with col1:
-                        submitted_update = st.form_submit_button("💾 Update Record", key=f"update_{record_to_edit['id']}")
-                        if submitted_update:
+                        if st.form_submit_button("💾 Update Record", key=f"update_{record_to_edit['id']}"):
                             success, err = upsert_account(**updated_data)
                             if success:
                                 st.success("✅ Record updated successfully!")
@@ -232,7 +205,6 @@ def run():
 
                         delete_clicked = st.form_submit_button("🗑️ Delete Record", key=f"delete_{record_to_edit['id']}")
                         confirm_delete = st.checkbox("Confirm delete", key=f"confirm_delete_{record_to_edit['id']}")
-
                         if delete_clicked:
                             if confirm_delete:
                                 success, err = delete_account(record_to_edit["id"])
@@ -243,16 +215,15 @@ def run():
                                 else:
                                     st.error(f"❌ Delete failed: {err}")
                             else:
-                                st.warning("⚠️ Please check 'Confirm delete' before deleting the record.")
+                                st.warning("⚠️ Please confirm delete before proceeding.")
 
-    # ------------------- TAB 2: CREATE NEW -------------------
+    # ------------------- TAB 2 -------------------
     with tab2:
         st.markdown("<h3 style='color: orange;'>➕ Add New Account</h3>", unsafe_allow_html=True)
         with st.form("new_form", clear_on_submit=True):
             new_account = build_account_fields_left_aligned(prefix="new")
-            submitted_new = st.form_submit_button("Save New Record")
-            if submitted_new:
-                if new_account["name"] and new_account["phone"]:
+            if st.form_submit_button("Save New Record"):
+                if new_account["name"]:
                     success, err = upsert_account(id=None, **new_account)
                     if success:
                         st.success("✅ Record added successfully!")
@@ -261,4 +232,77 @@ def run():
                     else:
                         st.error(f"❌ Failed to add record: {err}")
                 else:
-                    st.warning("⚠️ Please enter at least Name and Phone before saving.")
+                    st.warning("⚠️ Please enter Name before saving.")
+
+    # ------------------- TAB 3 (Bulk Upload) -------------------
+    with tab3:
+        st.markdown("<h3 style='color: orange;'>📤 Bulk Upload Accounts (Avoid Duplicates)</h3>", unsafe_allow_html=True)
+        st.info("Upload Excel/CSV. Existing accounts (by Name) will be skipped automatically.")
+
+        uploaded_file = st.file_uploader("Upload Excel or CSV", type=["xlsx", "csv"])
+
+        if uploaded_file:
+            try:
+                df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith(".csv") else pd.read_excel(uploaded_file)
+                st.write("✅ File Uploaded Successfully. Preview below:")
+                st.dataframe(df.head(), use_container_width=True)
+
+                df.columns = df.columns.str.strip()
+                sf_fields = [
+                    "Name", "Phone", "Industry", "Rating", "BillingCountry", "Active__c", "Type",
+                    "BillingStreet", "BillingCity", "BillingState", "BillingPostalCode",
+                    "ShippingStreet", "ShippingCity", "ShippingState", "ShippingPostalCode", "ParentId"
+                ]
+                df = df[[c for c in df.columns if c in sf_fields]]
+
+                if df.empty or "Name" not in df.columns:
+                    st.warning("⚠️ File must contain at least a 'Name' column.")
+                else:
+                    st.success(f"✅ {len(df)} records ready to process. Checking for duplicates...")
+
+                    with st.spinner("Fetching existing Account names from Salesforce..."):
+                        existing_names = get_existing_account_names()
+
+                    df["__lower_name__"] = df["Name"].str.strip().str.lower()
+                    df_unique = df[~df["__lower_name__"].isin(existing_names)].drop(columns="__lower_name__")
+
+                    duplicate_count = len(df) - len(df_unique)
+                    st.info(f"🧾 {duplicate_count} duplicates skipped, {len(df_unique)} new records to insert.")
+
+                    if len(df_unique) > 0:
+                        if st.button("🚀 Insert New Accounts", key="insert_button"):
+                            with st.spinner("Checking for new duplicates before final insert..."):
+                                latest_existing = get_existing_account_names()
+                                df_unique["__lower_name__"] = df_unique["Name"].str.strip().str.lower()
+                                df_final = df_unique[~df_unique["__lower_name__"].isin(latest_existing)].drop(columns="__lower_name__")
+
+                            if df_final.empty:
+                                st.warning("⚠️ All records already exist — nothing new to insert.")
+                            else:
+                                try:
+                                    records = df_final.to_dict(orient="records")
+                                    batch_size = 200
+                                    success_count = 0
+                                    fail_count = 0
+
+                                    with st.spinner(f"Inserting {len(df_final)} new record(s)..."):
+                                        for i in range(0, len(records), batch_size):
+                                            batch = records[i:i + batch_size]
+                                            try:
+                                                results = sf.bulk.Account.insert(batch)
+                                                for r in results:
+                                                    if r.get("success"):
+                                                        success_count += 1
+                                                    else:
+                                                        fail_count += 1
+                                            except Exception as e:
+                                                st.error(f"Error inserting batch: {e}")
+                                                fail_count += len(batch)
+
+                                    st.success(f"✅ Upload complete! {success_count} inserted, {fail_count} failed.")
+                                except Exception as e:
+                                    st.error(f"❌ Bulk insert failed: {e}")
+                    else:
+                        st.warning("⚠️ No new records found to insert (all were duplicates).")
+            except Exception as e:
+                st.error(f"❌ Error reading file: {e}")

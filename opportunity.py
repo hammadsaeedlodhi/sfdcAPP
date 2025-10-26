@@ -2,14 +2,12 @@ import streamlit as st
 import pandas as pd
 import time
 
-# ------------------- OPPORTUNITY APP -------------------
 def run():
-    # Header (Left aligned, orange icon)
     st.markdown(
         "<h2 style='text-align:left; color:#FF8800;'>💼 Salesforce Opportunity Manager</h2>",
         unsafe_allow_html=True
     )
-    st.write("Use this app to search, add, edit, or delete Opportunity records in Salesforce.")
+    st.write("Use this app to search, add, edit, delete, or bulk upload Opportunity records in Salesforce.")
 
     sf = st.session_state.sf_connection
 
@@ -99,7 +97,6 @@ def run():
             with col1:
                 name = st.text_input("Opportunity Name", value=opp.get("name", ""), key=f"name_{prefix}")
 
-                # Account dropdown
                 account_options = [""] + [f"{a['Name']} ({a['Id']})" for a in accounts]
                 selected_account = f"{opp.get('account_name','')} ({opp.get('account_id','')})" if opp.get("account_id") else ""
                 account_choice = st.selectbox("Account (Parent)", account_options,
@@ -107,7 +104,6 @@ def run():
                                               key=f"account_{prefix}")
                 account_id = account_choice.split("(")[-1].replace(")", "").strip() if "(" in account_choice else ""
 
-                # Stage
                 stage_options = ["Prospecting", "Qualification", "Needs Analysis", "Value Proposition",
                                  "Id. Decision Makers", "Perception Analysis", "Proposal/Price Quote",
                                  "Negotiation/Review", "Closed Won", "Closed Lost"]
@@ -152,13 +148,80 @@ def run():
             "forecast_category": forecast_category
         }
 
-    # ------------------- MAIN TABS -------------------
-    tab1, tab2 = st.tabs(["🔍 Search / Edit Opportunities", "➕ Add New Opportunity"])
+    # ------------------- BULK UPLOAD -------------------
+    def bulk_upload(file):
+        df = pd.read_excel(file)
+        st.success(f"✅ File Uploaded Successfully. Preview below:")
+        st.dataframe(df.head(), use_container_width=True)
 
-    # ------------------- TAB 1: SEARCH / EDIT -------------------
+        if 'Name' not in df.columns:
+            st.error("❌ Excel must contain a 'Name' column.")
+            return
+
+        # 🔹 Convert CloseDate column to proper Salesforce format (YYYY-MM-DD)
+        if 'CloseDate' in df.columns:
+            try:
+                df['CloseDate'] = pd.to_datetime(df['CloseDate'], errors='coerce', dayfirst=True).dt.strftime('%Y-%m-%d')
+            except Exception:
+                st.warning("⚠️ Could not convert some CloseDate values — please verify format in Excel.")
+
+        st.info(f"✅ {len(df)} records ready. Checking for duplicates...")
+        existing = sf.query_all("SELECT Name FROM Opportunity")['records']
+        existing_names = {e['Name'] for e in existing}
+
+        new_records = df[~df['Name'].isin(existing_names)]
+        duplicates = df[df['Name'].isin(existing_names)]
+
+        st.write(f"🧾 {len(duplicates)} duplicates skipped, {len(new_records)} new to insert.")
+
+        if len(new_records) == 0:
+            st.warning("⚠️ No new records to insert.")
+            return
+
+        if st.button("🚀 Insert Opportunities"):
+            total = len(new_records)
+            batch_size = 100
+            progress = st.progress(0)
+            inserted_count = 0
+            failed_count = 0
+
+            for i in range(0, total, batch_size):
+                batch = new_records.iloc[i:i+batch_size]
+                for _, row in batch.iterrows():
+                    try:
+                        sf.Opportunity.create({
+                            "Name": row["Name"],
+                            "StageName": row.get("StageName", "Prospecting"),
+                            "CloseDate": row.get("CloseDate", str(pd.Timestamp.today().date())),
+                            "AccountId": row.get("AccountId", None),
+                            "Amount": row.get("Amount", None),
+                            "Probability": row.get("Probability", None),
+                            "Type": row.get("Type", None),
+                            "LeadSource": row.get("LeadSource", None),
+                            "NextStep": row.get("NextStep", None),
+                            "Description": row.get("Description", None),
+                            "ForecastCategoryName": row.get("ForecastCategoryName", None)
+                        })
+                        inserted_count += 1
+                    except Exception:
+                        failed_count += 1
+
+                progress.progress(min((i + batch_size) / total, 1.0))
+                st.write(f"📦 Processed batch {i//batch_size + 1} of {total//batch_size + 1}...")
+
+            st.success(f"✅ Upload complete! {inserted_count} inserted, {failed_count} failed.")
+
+    # ------------------- TABS -------------------
+    tab1, tab2, tab3 = st.tabs([
+        "🔍 Search / Edit Opportunities",
+        "➕ Add New Opportunity",
+        "📤 Upload from Excel"
+    ])
+
+    # --- TAB 1: Search & Edit ---
     with tab1:
         st.markdown("<h4 style='color:#FF8800;'>Search Opportunities</h4>", unsafe_allow_html=True)
-        search_name = st.text_input("Enter Name to search", placeholder="e.g. ACME Deal")
+        search_name = st.text_input("Enter Opportunity Name to search")
 
         if search_name:
             results = search_opportunities(search_name)
@@ -168,8 +231,7 @@ def run():
                 st.dataframe(df, use_container_width=True)
 
                 options = [f"{r['Name']} | {r.get('StageName','')} | {r.get('Amount','')}" for r in results]
-                st.markdown("<h5 style='color:#FF8800; margin-bottom:-10px;'>Select record to edit</h5>", unsafe_allow_html=True)
-                selected_idx = st.selectbox("", range(len(results)), format_func=lambda x: options[x])
+                selected_idx = st.selectbox("Select record to edit", range(len(results)), format_func=lambda x: options[x])
                 record_to_edit = normalize_keys(results[selected_idx])
 
                 accounts = sf.query("SELECT Id, Name FROM Account LIMIT 200")['records']
@@ -204,7 +266,7 @@ def run():
                             else:
                                 st.warning("⚠️ Please confirm delete before proceeding.")
 
-    # ------------------- TAB 2: ADD NEW -------------------
+    # --- TAB 2: Add New Opportunity ---
     with tab2:
         st.markdown("<h4 style='color:#FF8800;'>Add New Opportunity</h4>", unsafe_allow_html=True)
         accounts = sf.query("SELECT Id, Name FROM Account LIMIT 200")['records']
@@ -224,3 +286,10 @@ def run():
                         st.error(f"❌ Failed to add record: {err}")
                 else:
                     st.warning("⚠️ Please enter Opportunity Name and select an Account before saving.")
+
+    # --- TAB 3: Bulk Upload ---
+    with tab3:
+        st.markdown("<h4 style='color:#FF8800;'>📤 Upload Opportunities from Excel</h4>", unsafe_allow_html=True)
+        uploaded_file = st.file_uploader("Upload an Excel file (.xlsx)", type=["xlsx"])
+        if uploaded_file:
+            bulk_upload(uploaded_file)
