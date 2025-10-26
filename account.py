@@ -35,7 +35,7 @@ def run():
                        ShippingState, ShippingPostalCode, ParentId
                 FROM Account
                 WHERE Name LIKE '%{name_search}%'
-                LIMIT 100
+                
             """
             results = sf.query(query)['records']
             return results
@@ -183,6 +183,23 @@ def run():
             results = search_accounts(search_name)
             if results:
                 st.success(f"✅ Found {len(results)} record(s)")
+
+                # --- ✅ RESTORED LIST VIEW SECTION ---
+                st.markdown("<h5 style='color: orange;'>📋 Account List View</h5>", unsafe_allow_html=True)
+                df_view = pd.DataFrame([
+                    {
+                        "Name": r.get("Name", ""),
+                        "Phone": r.get("Phone", ""),
+                        "Industry": r.get("Industry", ""),
+                        "Country": r.get("BillingCountry", ""),
+                        "Rating": r.get("Rating", ""),
+                        "Type": r.get("Type", "")
+                    }
+                    for r in results
+                ])
+                st.dataframe(df_view, use_container_width=True)
+                # --- END LIST VIEW ---
+
                 options = [f"{r['Name']} | {r.get('Phone','')} | {r.get('Industry','')}" for r in results]
                 st.markdown("<div style='color: orange; font-size: 18px; font-weight: 600; margin-bottom: -12px;'>Select record to edit</div>", unsafe_allow_html=True)
                 selected_idx = st.selectbox("", range(len(results)), format_func=lambda x: options[x])
@@ -216,6 +233,8 @@ def run():
                                     st.error(f"❌ Delete failed: {err}")
                             else:
                                 st.warning("⚠️ Please confirm delete before proceeding.")
+            else:
+                st.warning("⚠️ No records found.")
 
     # ------------------- TAB 2 -------------------
     with tab2:

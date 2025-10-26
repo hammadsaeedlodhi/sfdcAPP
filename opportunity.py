@@ -19,7 +19,7 @@ def run():
                        LeadSource, NextStep, Description, ForecastCategoryName
                 FROM Opportunity
                 WHERE Name LIKE '%{name_search}%'
-                LIMIT 100
+                
             """
             results = sf.query(query)['records']
             for r in results:

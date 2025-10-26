@@ -47,7 +47,7 @@ def run():
                        AccountId, Account.Name
                 FROM Contact
                 WHERE FirstName LIKE '%{name_search}%' OR LastName LIKE '%{name_search}%'
-                LIMIT 100
+                
             """
             results = sf.query(query)['records']
             return results
